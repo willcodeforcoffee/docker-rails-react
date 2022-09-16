@@ -80,7 +80,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    command: yarn start
+    command: yarn install && yarn start
     restart: "no"
     volumes:
       - ./frontend:/app
@@ -91,7 +91,7 @@ services:
 
 So by replacing the `image` section with a `build` section we've changed "frontend" from using an `image` to a built Dockerfile.
 
-We've also added a `command` that will run `yarn start` starting the React development server.
+We've also added a `command` that will run `yarn install` then `yarn start` starting the React development server.
 
 Finally we mapped `ports` from `3000` on the container to `4000` on the host server. We can use Docker networking to map a container port to an entirely different port on the host. This is useful when you're running more than one service. For example in future steps we'll create a Rails app and Rails also likes to default to port 3000.
 
@@ -110,6 +110,10 @@ Before we go to the next step lets stop our current Docker services:
 ```sh
 docker compose down
 ```
+
+> A note about Windows and Live Reload: The Windows filesystem does not support the background notifications that the Linux and MacOS filesystems do in Docker. As a result file watchers like React uses do no work if you're starting your Docker containers from Windows. This is a huge bummer for me and maybe for you too.
+>
+> The best workaround I can offer right now is to start your Docker containers from a WSL distribution. Since Docker uses its own WSL distro for its services you should have all the prerequisites required to install Ubuntu or another WSL distro right from the Windows Store.
 
 ## Step 3: Create the Rails Backend
 
@@ -130,7 +134,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    command: yarn start
+    command: yarn install && yarn start
     restart: "no"
     volumes:
       - ./frontend:/app
