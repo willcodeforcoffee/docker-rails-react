@@ -1,0 +1,25 @@
+version: "3.8"
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    command: yarn start
+    restart: "no"
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "4000:3000"
+  postgres:
+    image: postgres:12.11-alpine
+    environment:
+      POSTGRES_PASSWORD: _Password123!
+    volumes:
+      - postgres-data:/var/lib/postgresql/data:rw
+  redis:
+    image: redis:7.0-alpine
+    volumes:
+      - redis-data:/data:rw
+volumes:
+  postgres-data:
+  redis-data:
