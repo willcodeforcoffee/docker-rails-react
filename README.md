@@ -85,7 +85,7 @@ services:
     volumes:
       - ./frontend:/app
     ports:
-      - "4000:3000"
+      - "3000:3000"
 
 ```
 
@@ -180,6 +180,7 @@ docker-rails-react-redis-1     | 1:M 01 Jan 2022 00:00:00.000 * Ready to accept 
 If both services are "ready to accept connections" we are ready to proceed. Use `CTRL-C` to stop docker and run `docker compose down` to stop the services again.
 
 ### Step 3b: Add the Rails Backend service
+
 
 
 ---

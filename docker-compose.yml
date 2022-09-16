@@ -9,7 +9,7 @@ services:
     volumes:
       - ./frontend:/app
     ports:
-      - "4000:3000"
+      - "3000:3000"
   postgres:
     image: postgres:12.11-alpine
     environment:
