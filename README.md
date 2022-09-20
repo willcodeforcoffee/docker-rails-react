@@ -69,9 +69,9 @@ WORKDIR /app
 EXPOSE 3000
 ```
 
-The Dockerfile will use the same `image` we used from the `docker-compose` file (node:18.8.0-bullseye) as a base, but will use `/app` for the directory to run commands in. It also will `EXPOSE` port 3000, the default for the `create-react-app` server.
+The `Dockerfile` will use the same `image` we used from the `docker-compose` file (node:18.8.0-bullseye) as a base, but will use `/app` for the directory to run commands in. It also will `EXPOSE` port 3000, the default for the `create-react-app` server.
 
-Now lets edit the `docker-compose.yml` file so that it will use the Dockerfile to create the app image instead of the raw Node:18-bullseye image:
+Now lets edit the `docker-compose.yml` file so that it will use the `Dockerfile` to create the app image instead of the raw Node:18-bullseye image:
 
 ```yml
 version: "3.8"
@@ -179,10 +179,61 @@ and
 docker-rails-react-redis-1     | 1:M 01 Jan 2022 00:00:00.000 * Ready to accept connections
 ```
 
-If both services are "ready to accept connections" we are ready to proceed. Use `CTRL-C` to stop docker and run `docker compose down` to stop the services again.
+If both services are "ready to accept connections" we are ready to proceed with setting up Rails. Use `CTRL-C` to stop docker and run `docker compose down` to stop the services again.
 
 ### Step 3b: Add the Rails Backend service
 
+The first thing we need to do would be to create a container for our backend Rails service. We'll do the same thing we did for the `frontend` service and use a `Dockerfile` and build context.
+
+Run the following commands to create an `api` folder and `Dockerfile`:
+
+```sh
+mkdir api
+touch api/Dockerfile
+```
+
+Now lets edit the `api/Dockerfile` to use the latest Ruby 3.1 image:
+
+```Dockerfile
+FROM ruby:3.1-bullseye
+
+RUN gem install bundler rails rake
+
+RUN mkdir /app
+ENV RAILS_ROOT /app
+WORKDIR /app
+
+EXPOSE 3000
+```
+
+Now add a new service to your `docker-compose.yml` file:
+```yml
+services:
+  # Other services omitted
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    command: sh -c "/wait && bin/start_rails.sh"
+    restart: "no"
+    volumes:
+      # Persist (and share) Bundler data
+      - ./api:/app
+```
+We've added a volume mapping `api` to `app` in the container. Now lets use this container to create a new Rails app:
+
+```sh
+docker compose run api rails new . --database=postgresql --api --skip-git
+```
+
+This will kick off the following steps:
+1. Docker will pull the latest Ruby 3.1 image
+1. Docker Compose will start the services
+1. When all of the services are up it will create a new Rails app in the container.
+
+Thanks to the volume mapping your new Rails app will be created in the `api` folder. Have a look.
+
+### Step 3c: Configure Rails to use other services
 
 
 ---

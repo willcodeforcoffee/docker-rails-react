@@ -10,6 +10,14 @@ services:
       - ./frontend:/app
     ports:
       - "3000:3000"
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    command: sh -c "/wait && bin/start_rails.sh"
+    restart: "no"
+    volumes:
+      - ./api:/app
   postgres:
     image: postgres:12.11-alpine
     environment:
