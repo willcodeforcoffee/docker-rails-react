@@ -14,7 +14,7 @@ To follow the directions you need to have the following installed:
 [the Docker website](https://www.docker.com/get-started/) has the directions you'll need for your OS)
 - [Visual Studio Code](https://code.visualstudio.com/) or another IDE or text editor (including vim or emacs)
 
-There are some subtle differences with how Docker works on Windows, MacOS and Linux. I'll try to point out extra steps necessary depending on your OS version whenever necessary. Docker makes it possible to create common developer environments without having to depend on the host operating system!
+There are some subtle differences with how Docker works on Windows, MacOS and Linux. I'll try to point out extra steps necessary depending on your OS version whenever necessary. Docker makes it possible to create common developer environments without having to depend on the host operating system! On Windows however I *strongly* recommend using the [WSL/WSL2 integration](https://docs.docker.com/desktop/windows/wsl/) for managing and interacting with Docker.
 
 ## Getting Started
 
@@ -37,7 +37,7 @@ services:
 
 In this file we have described one container named `frontend` that will be running Node v18 on Debian Bullseye. It won't restart. It maps a folder "volume" from the `/app` folder on the container to `./frontend` from the working folder on the host machine.
 
-Now when we can use `create-react-app` to create our frontend React framework by running a command on the container and the volume mapping will save the files to our host machine:
+Now we can use `create-react-app` to create our frontend React framework by running a command **on the container** and the volume mapping will save the files to our host machine:
 
 
 ```sh
@@ -52,7 +52,7 @@ docker compose run frontend yarn create react-app app --template typescript
 4. Because Docker mapped `/app` to `./frontend` Docker will create the `frontend` folder and when `create-react-app` finishes the React application will also be in that folder on the host machine.
 5. When `create-react-app` completes Docker will stop the "frontend" container.
 
-All of these steps took a little over 10 minutes on my computer so don't be worried if it takes a while.
+All of these steps took a little over 10 minutes on my computer so don't be worried if it takes a while. This did not install Node on your host machine, it ran it from inside a Docker container.
 
 ### Step 2: Create a Docker Image for Frontend
 
@@ -235,6 +235,175 @@ Thanks to the volume mapping your new Rails app will be created in the `api` fol
 
 ### Step 3c: Configure Rails to use other services
 
+Rails of course takes a little bit of setup to use the services we've created. The settings are easy to add using [environment variables](https://docs.docker.com/compose/environment-variables/). We already added one environment variable setting `POSTGRES_PASSWORD` above. To make maintaining the configuration easier, as well as to make it shareable among containers lets move our configuration into a [separate file called `.env`](https://docs.docker.com/compose/environment-variables/#the-env-file).
+
+So create `.env` at the same level as your `docker-compose.yml` file and add the following to it:
+
+```env
+POSTGRES_HOST=postgres
+POSTGRES_PORT=6120
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=noosphere
+DATABASE_URL=postgres://postgres:postgres@postgres:6120/noosphere
+
+REDIS_HOST=redis
+REDIS_PORT=6379
+REDIS_CHANNEL_PREFIX=noosphere
+REDIS_URL=redis://redis:6379/0
+```
+
+#### Edit database.yml
+
+Lets setup Rails to use the database. Edit `api/config/database.yml` to have the following contents:
+
+```yml
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  # For details on connection pooling, see Rails configuration guide
+  # https://guides.rubyonrails.org/configuring.html#database-pooling
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  username: <%= ENV['POSTGRES_USER'] %>
+  password: <%= ENV['POSTGRES_PASSWORD'] %>
+  host: <%= ENV['POSTGRES_HOST'] %>
+  port: <%= ENV['POSTGRES_PORT'] %>
+
+development:
+  <<: *default
+  database: <%= ENV['POSTGRES_DB'] %>
+
+test:
+  <<: *default
+  database: <%= ENV['POSTGRES_DB'] %>_test
+
+production:
+  <<: *default
+  database: <%= ENV['POSTGRES_DB'] %>
+```
+
+#### Edit cable.yml
+
+We can setup ActionCable to use our Docker Redis instance in development too. Edit `api/config/cable.yml` to have to have the following contents:
+
+```yml
+development:
+  adapter: redis
+  url: <%= ENV.fetch("REDIS_URL") { "redis://redis:6379/0" } %>
+  channel_prefix: <%= ENV.fetch("REDIS_CHANNEL_PREFIX") { "" } %>
+
+test:
+  adapter: test
+
+production:
+  adapter: redis
+  url: <%= ENV.fetch("REDIS_URL") { "redis://redis:6379/0" } %>
+  channel_prefix: <%= ENV.fetch("REDIS_CHANNEL_PREFIX") { "" } %>
+```
+
+#### Edit Docker Compose
+
+Now to use it we can add `env_file` to all of the services and remove the `environment` section in our `docker-compose.yml` file:
+
+```yml
+version: "3.8"
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    command: yarn install && yarn start
+    restart: "no"
+    env_file: # new
+      - ".env"
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "3000:3000"
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    command: sh -c "bundle install && bin/rails server"
+    restart: "no"
+    env_file: # new
+      - ".env"
+    volumes:
+      - ./api:/app
+  postgres:
+    image: postgres:12.11-alpine
+    env_file: # new
+      - ".env"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data:rw
+  redis:
+    image: redis:7.0-alpine
+    env_file: # new
+      - ".env"
+    volumes:
+      - redis-data:/data:rw
+volumes:
+  postgres-data:
+  redis-data:
+```
+
+### Step 3c: Cleanup
+
+In the background I've been using git to track and save my changes to the environment. When I run `git status` now I get the following output:
+
+```
+On branch master
+Your branch is up to date with 'origin/master'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   README.md
+        modified:   api/Dockerfile
+        modified:   api/Gemfile
+        modified:   api/Gemfile.lock
+        modified:   api/config/cable.yml
+        modified:   docker-compose.yml
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+        .env
+        api/log/development.log
+        api/tmp/cache/
+        api/tmp/development_secret.txt
+        api/tmp/pids/server.pid
+        api/tmp/restart.txt
+
+no changes added to commit (use "git add" and/or "git commit -a")
+```
+
+The first thing we notice is that git wants to track changes in some files from `api/tmp`, but you and I both know that `tmp` folder changes do not go into source control - especially pids and secrets! Also the fact `server.pid` is still around will will us some problems in the future, specifically when I run `docker compose up` again I'm going to get the following output:
+
+```
+docker-rails-react-api-1       | => Booting Puma
+docker-rails-react-api-1       | => Rails 7.0.4 application starting in development
+docker-rails-react-api-1       | => Run `bin/rails server --help` for more startup options
+docker-rails-react-api-1       | Exiting
+docker-rails-react-api-1       | A server is already running. Check /app/tmp/pids/server.pid.
+```
+
+#### .gitignore
+
+First things first lets get add a `.gitignore`:
+
+```.gitignore
+tmp
+```
+
+Now `git status` won't include the files in `api/tmp`.
+
+#### Clear tmp
+
+Rails comes with a command to clean `tmp` before running so we can add that to the `docker-compose.yml` file so that the folder (and pids) is cleared before running:
+
+```yml
+command: sh -c "bundle install && bin/rails tmp:clear && bin/rails server"
+```
 
 ---
 

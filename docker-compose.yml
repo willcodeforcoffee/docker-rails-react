@@ -4,8 +4,10 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    command: yarn install && yarn start
+    command: sh -c "yarn install && yarn start"
     restart: "no"
+    env_file:
+      - ".env"
     volumes:
       - ./frontend:/app
     ports:
@@ -14,18 +16,41 @@ services:
     build:
       context: ./api
       dockerfile: Dockerfile
-    command: sh -c "/wait && bin/start_rails.sh"
+    command: sh -c "bundle install && bin/rails tmp:clear && bin/rails server"
     restart: "no"
+    env_file:
+      - ".env"
+    depends_on:
+      - postgres
+      - redis
     volumes:
       - ./api:/app
   postgres:
     image: postgres:12.11-alpine
-    environment:
-      POSTGRES_PASSWORD: _Password123!
+    env_file:
+      - ".env"
+    healthcheck:
+      test:
+        [
+          "CMD", "pg_isready",
+          "-q",
+          "-d",
+          "${POSTGRES_DB}",
+          "-U",
+          "${POSTGRES_USER}",
+        ]
+      retries: 3
+      timeout: 5s
     volumes:
       - postgres-data:/var/lib/postgresql/data:rw
   redis:
     image: redis:7.0-alpine
+    env_file:
+      - ".env"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      retries: 3
+      timeout: 5s
     volumes:
       - redis-data:/data:rw
 volumes:
