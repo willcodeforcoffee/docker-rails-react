@@ -1,5 +1,14 @@
 version: "3.8"
 services:
+  proxy:
+    image: nginx:1.23.3-alpine
+    volumes:
+      - ./proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "3000:80"
+    depends_on:
+      - frontend
+      - api
   frontend:
     build:
       context: ./frontend
@@ -10,13 +19,11 @@ services:
       - ".env"
     volumes:
       - ./frontend:/app
-    ports:
-      - "3000:3000"
   api:
     build:
       context: ./api
       dockerfile: Dockerfile
-    command: sh -c "bundle install && bin/rails tmp:clear && bin/rails server"
+    command: ["rails", "server"]
     restart: "no"
     env_file:
       - ".env"

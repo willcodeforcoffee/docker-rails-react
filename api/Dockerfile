@@ -7,3 +7,6 @@ ENV RAILS_ROOT /app
 WORKDIR /app
 
 EXPOSE 3000
+
+ENTRYPOINT ["/app/bin/docker-entrypoint.sh"]
+CMD ["rails", "server"]

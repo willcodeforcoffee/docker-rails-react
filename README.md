@@ -347,37 +347,9 @@ volumes:
   redis-data:
 ```
 
-### Step 3c: Cleanup
+### Fixing the server.pid Problem
 
-In the background I've been using git to track and save my changes to the environment. When I run `git status` now I get the following output:
-
-```
-On branch master
-Your branch is up to date with 'origin/master'.
-
-Changes not staged for commit:
-  (use "git add <file>..." to update what will be committed)
-  (use "git restore <file>..." to discard changes in working directory)
-        modified:   README.md
-        modified:   api/Dockerfile
-        modified:   api/Gemfile
-        modified:   api/Gemfile.lock
-        modified:   api/config/cable.yml
-        modified:   docker-compose.yml
-
-Untracked files:
-  (use "git add <file>..." to include in what will be committed)
-        .env
-        api/log/development.log
-        api/tmp/cache/
-        api/tmp/development_secret.txt
-        api/tmp/pids/server.pid
-        api/tmp/restart.txt
-
-no changes added to commit (use "git add" and/or "git commit -a")
-```
-
-The first thing we notice is that git wants to track changes in some files from `api/tmp`, but you and I both know that `tmp` folder changes do not go into source control - especially pids and secrets! Also the fact `server.pid` is still around will will us some problems in the future, specifically when I run `docker compose up` again I'm going to get the following output:
+When I run `docker compose up` a second time I got the following output:
 
 ```
 docker-rails-react-api-1       | => Booting Puma
@@ -387,22 +359,163 @@ docker-rails-react-api-1       | Exiting
 docker-rails-react-api-1       | A server is already running. Check /app/tmp/pids/server.pid.
 ```
 
-#### .gitignore
+An accidental result of running the Rails server through `sh -c` like we did in our `docker-compose.yml` file is that `sh` will catch but not pass interrupt signals through to Rails. Without that signal the [Puma](https://puma.io/) webserver isn't able to shutdown cleanly and erase the `server.pid` file.
 
-First things first lets get add a `.gitignore`:
+The [explanation and solution I was able to find via Stack Overflow](https://stackoverflow.com/a/38732187) suggests creating a Docker [entrypoint](https://docs.docker.com/engine/reference/builder/#entrypoint).
 
-```.gitignore
-tmp
+Using the `entrypoint` method requires three steps:
+
+1. Create an entrypoint shell file (`api/bin/docker-entrypoint.sh`)
+1. Add an `ENTRYPOINT` instruction to `api/Dockerfile` pointed to the shell file
+1. Change the command in `docker-compose.yml` to only run `rails server`
+
+#### Step 1: api/bin/docker-entrypoint.sh
+
+This file checks for and removes `server.pid` then does the other environment setup commands like `bundle install`. The final line will `exec` the `command` from `docker-compose.yml`.
+
+I put it in the `bin` subfolder as a convention but there is no reason it has to be there.
+
+```sh
+#!/bin/sh
+set -e
+
+if [ -f tmp/pids/server.pid ]; then
+  rm tmp/pids/server.pid
+fi
+bundle install
+exec bundle exec "$@"
 ```
 
-Now `git status` won't include the files in `api/tmp`.
+#### Step 2: api/Dockerfile
 
-#### Clear tmp
+The main changes to the Dockerfile are at the bottom where the ENTRYPOINT is defined
 
-Rails comes with a command to clean `tmp` before running so we can add that to the `docker-compose.yml` file so that the folder (and pids) is cleared before running:
+```Dockerfile
+FROM ruby:3.1.3-bullseye
+
+RUN gem install bundler rails rake
+
+RUN mkdir /app
+ENV RAILS_ROOT /app
+WORKDIR /app
+
+EXPOSE 3000
+
+ENTRYPOINT ["/app/bin/docker-entrypoint.sh"]
+CMD ["rails", "server"]
+```
+
+I'm not sure I need to have the `CMD` instruction, but it is good to provide it as a default anyways.
+
+#### Step 3. docker-compose.yml
+
+For brevity I'm omitting the rest of the file so you can see the change to be made:
 
 ```yml
-command: sh -c "bundle install && bin/rails tmp:clear && bin/rails server"
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    command: ["rails", "server"]
+```
+
+## Step 4: Reverse Proxy
+
+The reverse proxy will stand up in front of the React and Rails containers so that they'll be accessible through a single URL (host and port) instead of two.
+
+We will use [nginx](https://nginx.org/en/) as our reverse proxy because it is easy to configure and provision (its also a pretty commonly used web server and proxy in production environments as well).
+
+We will proxy the React `frontend` service to `/`, the root of our site, and, the Rails `api` to `/api` of the site. We'll also need to keep in mind that `create-react-app` provides hot reloading via a websocket at `/ws`.
+
+I will also remove the port mapping to `frontend` and `api` so that they can only be accessed via `proxy` afterwards.
+
+### Adding nginx
+
+We'll be able use the [`nginx`](https://hub.docker.com/_/nginx/) Docker image directly with no need for another `Dockerfile`.
+
+Nginx is configured using a file called `nginx.conf`. The image makes it easy to override the default configuration by merely mapping a file volume over the top of the file in the image. I'll show how to do that in the following steps:
+
+#### Add `nginx.conf`
+
+I'm going to create a `proxy` folder at the root, the same level as `api` and `frontend`. I'll put `nginx.conf` in there.
+
+Create `proxy/nginx.conf` and put the following in the file:
+
+```nginx
+worker_processes auto;
+worker_rlimit_nofile 2048;
+
+events {
+  worker_connections 1024;
+}
+
+error_log /dev/stdout info;
+
+http {
+  charset                utf-8;
+
+  sendfile               on;
+  tcp_nopush             on;
+  tcp_nodelay            on;
+
+  server_tokens          off;
+
+  types_hash_max_size    2048;
+  types_hash_bucket_size 64;
+
+  client_max_body_size   64M;
+
+  include /etc/nginx/mime.types;
+  default_type           application/octet-stream;
+
+  server {
+      listen 80;
+
+      location / {
+        proxy_pass http://frontend:3000/;
+        # To proxy websockets
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+      }
+
+      # Websocket for automatic reloading
+      location /ws {
+        proxy_pass http://frontend:3000/ws;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+      }
+
+
+      location /api/ {
+        proxy_pass http://api:3000/;
+        proxy_set_header Upgrade \$http_upgrade;
+      }
+  }
+}
+```
+
+A lot of the file is boilerplate I copied from another file, the important changes are the `server` and `location` directives. You can see each `location` that has a `proxy_pass` directing traffic to each services from our `docker-config.yml` file. There are headers added for connection upgrades to delegate to a websocket behind the scenes too.
+
+#### docker-compose.yml changes
+
+I created a new service called `proxy`:
+1. using the `nginx` image
+2. mapping `nginx.conf` using the `volumes` command
+3. setting the listening port to `3000`
+4. creating dependencies on the downstream `frontend` and `api` containers so it doesn't start prematurely
+
+```yml
+  proxy:
+    image: nginx:1.23.3-alpine
+    volumes:
+      - ./proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "3000:80"
+    depends_on:
+      - frontend
+      - api
 ```
 
 ---
