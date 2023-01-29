@@ -22,7 +22,7 @@ Docker containers can be created and run from the command-line quite easily but 
 
 Docker Compose is managed through a [YAML](https://yaml.org/) file called `docker-compose.yml`. So lets begin with that.
 
-### Step 1: Create a docker-compose.yml file
+## Step 1: Create a docker-compose.yml file
 
 In the directory you'll be working in create a file called `docker-compose.yml` and fill it with the following:
 
@@ -54,7 +54,7 @@ docker compose run frontend yarn create react-app app --template typescript
 
 All of these steps took a little over 10 minutes on my computer so don't be worried if it takes a while. This did not install Node on your host machine, it ran it from inside a Docker container.
 
-### Step 2: Create a Docker Image for Frontend
+## Step 2: Create a Docker Image for Frontend
 
 In the newly created `frontend` folder we need to create a `Dockerfile` that will let us create the React frontend over-and-over and to run the app when we start the app.
 
@@ -429,13 +429,11 @@ We will proxy the React `frontend` service to `/`, the root of our site, and, th
 
 I will also remove the port mapping to `frontend` and `api` so that they can only be accessed via `proxy` afterwards.
 
-### Adding nginx
-
 We'll be able use the [`nginx`](https://hub.docker.com/_/nginx/) Docker image directly with no need for another `Dockerfile`.
 
 Nginx is configured using a file called `nginx.conf`. The image makes it easy to override the default configuration by merely mapping a file volume over the top of the file in the image. I'll show how to do that in the following steps:
 
-#### Add `nginx.conf`
+### Add `nginx.conf`
 
 I'm going to create a `proxy` folder at the root, the same level as `api` and `frontend`. I'll put `nginx.conf` in there.
 
@@ -498,7 +496,7 @@ http {
 
 A lot of the file is boilerplate I copied from another file, the important changes are the `server` and `location` directives. You can see each `location` that has a `proxy_pass` directing traffic to each services from our `docker-config.yml` file. There are headers added for connection upgrades to delegate to a websocket behind the scenes too.
 
-#### docker-compose.yml changes
+### docker-compose.yml changes
 
 I created a new service called `proxy`:
 1. using the `nginx` image
