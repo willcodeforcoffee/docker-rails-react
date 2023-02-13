@@ -1,0 +1,6 @@
+  [1m[36mTRANSACTION (0.3ms)[0m  [1m[35mBEGIN[0m
+-----------------------------
+PingControllerTest: test_ping
+-----------------------------
+[ActionDispatch::HostAuthorization::DefaultResponseApp] Blocked host: www.example.com
+  [1m[36mTRANSACTION (0.3ms)[0m  [1m[31mROLLBACK[0m

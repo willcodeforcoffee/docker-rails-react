@@ -27,6 +27,7 @@ Docker Compose is managed through a [YAML](https://yaml.org/) file called `docke
 In the directory you'll be working in create a file called `docker-compose.yml` and fill it with the following:
 
 ```yml
+version: "3.8"
 services:
   frontend:
     image: node:18.8.0-bullseye
@@ -240,16 +241,17 @@ Rails of course takes a little bit of setup to use the services we've created. T
 So create `.env` at the same level as your `docker-compose.yml` file and add the following to it:
 
 ```env
+## Server Configuration
 POSTGRES_HOST=postgres
-POSTGRES_PORT=6120
+POSTGRES_PORT=5432
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres
-POSTGRES_DB=noosphere
-DATABASE_URL=postgres://postgres:postgres@postgres:6120/noosphere
+POSTGRES_DB=docker_rails_react
+DATABASE_URL=postgres://postgres:postgres@postgres:5432/docker_rails_react
 
 REDIS_HOST=redis
 REDIS_PORT=6379
-REDIS_CHANNEL_PREFIX=noosphere
+REDIS_CHANNEL_PREFIX=docker_rails_react
 REDIS_URL=redis://redis:6379/0
 ```
 
@@ -518,9 +520,9 @@ I created a new service called `proxy`:
 
 ---
 
-## FAQ
+# FAQ
 
-### Why no example of a production environment?
+## Why no example of a production environment?
 
 It is easy to use Docker in production using lots of cloud servers or your own
 local computers! You'll make different choices about databases and edge servers
@@ -528,3 +530,11 @@ than we do for development. Also there will be different choices for how you
 would handle things like secrets managements, cloud databases, etc.
 
 This example is for getting a development team up, and collaborating fast!
+
+## How do I run rails CLI commands?
+
+```sh
+docker compose exec api rails help
+```
+
+Just replace `help` with your command!

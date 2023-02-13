@@ -13,7 +13,11 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - "UID=${UID:-1000}"
+        - "GID=${GID:-1000}"
     command: sh -c "yarn install && yarn start"
+    user: "${UID}:${GID}"
     restart: "no"
     env_file:
       - ".env"
@@ -23,13 +27,19 @@ services:
     build:
       context: ./api
       dockerfile: Dockerfile
-    command: ["rails", "server"]
+      args:
+        - "UID=${UID:-1000}"
+        - "GID=${GID:-1000}"
+    command: ["rails", "server", "--binding=0.0.0.0"]
+    user: "${UID}:${GID}"
     restart: "no"
     env_file:
       - ".env"
     depends_on:
       - postgres
       - redis
+    ports:
+      - "3001:3000"
     volumes:
       - ./api:/app
   postgres:
